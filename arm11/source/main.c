@@ -118,6 +118,8 @@ static void initScreens(u32 brightnessLevel, struct fb *fbs)
     //Disco register
     for(u32 i = 0; i < 256; i++)
         *(vu32 *)0x10400584 = 0x10101 * i;
+    //enable 3d??
+    *(volatile u32*)0x10202000 = 0xAAAAAAAA;
 }
 
 static void setupFramebuffers(struct fb *fbs)

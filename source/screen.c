@@ -35,6 +35,7 @@
 #include "i2c.h"
 #include "utils.h"
 
+
 struct fb fbs[2] =
 {
     {

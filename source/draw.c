@@ -34,32 +34,62 @@
 #include "screen.h"
 #include "utils.h"
 #include "fs.h"
+#include "fatfs/ff.h"
 #include "fmt.h"
 #include "font.h"
 #include "config.h"
+#include "timer.h"
 
 bool loadSplash(void)
 {
+    u8 frameRate = 0x0f;
     static const char *topSplashFile = "splash.bin",
+                      *topRightSplashFile = "splash_right.bin",
                       *bottomSplashFile = "splashbottom.bin";
-
-    bool isTopSplashValid = getFileSize(topSplashFile) == SCREEN_TOP_FBSIZE,
-         isBottomSplashValid = getFileSize(bottomSplashFile) == SCREEN_BOTTOM_FBSIZE;
-
-    //Don't delay boot nor init the screens if no splash images or invalid splash images are on the SD
-    if(!isTopSplashValid && !isBottomSplashValid) return false;
-
+    
+    bool isTopSplashValid = getFileSize(topSplashFile) >= SCREEN_TOP_FBSIZE,
+          isBottomSplashValid = getFileSize(bottomSplashFile) >= SCREEN_BOTTOM_FBSIZE;
+    unsigned int br;
+   
     initScreens();
+  
+    FIL top;
+    FIL bottom;
 
-    if(isTopSplashValid) isTopSplashValid = fileRead(fbs[1].top_left, topSplashFile, SCREEN_TOP_FBSIZE) == SCREEN_TOP_FBSIZE;
-    if(isBottomSplashValid) isBottomSplashValid = fileRead(fbs[1].bottom, bottomSplashFile, SCREEN_BOTTOM_FBSIZE) == SCREEN_BOTTOM_FBSIZE;
+    if(f_open(&top, topSplashFile, FA_READ | FA_OPEN_EXISTING) != FR_OK)
+    {
+        return false;
+    }
+  
+    //Get the framerate
+    f_read(&top, (void*)(&frameRate), 1, br);        
+    
+    //Setup timers
+    u32 nextFrameTimerValue=TIMERFREQUENCY/1024/frameRate;
+    vu16* timerValue=timerGetValueAddress(0);
+    *timerValue=0;
+    
+    
+    //Start timer
+    timerStart(0,PRESCALER_1024);
+    u32 frame = 1;
+    
+     
+    while(1){
+        f_read(&top, (void*)(TEMPSPLASHADDRESS), SCREEN_TOP_FBSIZE, &br);
+        memcpy((void *)fbs[1].top_left,(void*)(TEMPSPLASHADDRESS),br);
+        if (br < SCREEN_TOP_FBSIZE)  
+            break;
+   
+        while(*timerValue<nextFrameTimerValue);
+            *timerValue=0;
 
-    if(!isTopSplashValid && !isBottomSplashValid) return false;
-
-    swapFramebuffers(true);
-
-    u32 durationIndex = MULTICONFIG(SPLASH_DURATION);
-    wait(1000ULL + (durationIndex * 2000ULL));
+        frame++;
+        swapFramebuffers(true);
+    }
+    
+    timerStop(0);
+    f_close(&top);
 
     return true;
 }
@@ -108,8 +138,8 @@ u32 drawString(bool isTopScreen, u32 posX, u32 posY, u32 color, const char *stri
                 }
 
                 drawCharacter(isTopScreen, posX + line_i * SPACING_X, posY, color, string[i]);
-
                 line_i++;
+
                 break;
         }
 
